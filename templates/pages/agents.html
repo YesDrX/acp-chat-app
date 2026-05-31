@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex-1 p-6 overflow-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-white">🤖 Agents</h2>
+        <button onclick="document.getElementById('agent-modal').classList.remove('hidden')"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm font-medium transition-colors">
+            + Add Agent
+        </button>
+    </div>
+
+    <!-- Agents Table -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-800 text-left text-gray-400">
+                    <th class="px-4 py-3 font-medium">Name</th>
+                    <th class="px-4 py-3 font-medium">Type</th>
+                    <th class="px-4 py-3 font-medium">Command</th>
+                    <th class="px-4 py-3 font-medium">Description</th>
+                    <th class="px-4 py-3 font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-800">
+                {% for agent in agents %}
+                <tr class="hover:bg-gray-800/50 transition-colors">
+                    <td class="px-4 py-3 font-medium text-white">{{ agent.name }}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-0.5 text-xs rounded-full bg-gray-800 text-gray-300">{{ agent.type }}</span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-400 font-mono text-xs">{{ agent.command }} {{ ' '.join(agent.args) }}</td>
+                    <td class="px-4 py-3 text-gray-400 max-w-xs truncate">{{ agent.description or '—' }}</td>
+                    <td class="px-4 py-3">
+                        <button onclick="editAgent('{{ agent.id }}')"
+                                class="text-blue-400 hover:text-blue-300 text-xs mr-2">Edit</button>
+                        <button onclick="deleteAgent('{{ agent.id }}', '{{ agent.name }}')"
+                                class="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not agents %}
+                <tr>
+                    <td colspan="5" class="px-4 py-12 text-center text-gray-500">
+                        No agents configured. Click "Add Agent" to create one.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add/Edit Agent Modal -->
+<div id="agent-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg p-6 shadow-2xl">
+        <div class="flex items-center justify-between mb-4">
+            <h3 id="agent-modal-title" class="text-lg font-bold text-white">Add Agent</h3>
+            <button onclick="closeAgentModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <form id="agent-form" onsubmit="submitAgent(event)" class="space-y-3">
+            <input type="hidden" id="agent-id" name="id" value="">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Name *</label>
+                <input type="text" name="name" required
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                       placeholder="e.g. Pi Agent">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Type</label>
+                <select name="type"
+                        class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="cli">cli</option>
+                    <option value="api">api</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Command</label>
+                <input type="text" name="command"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                       placeholder="e.g. npx">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Args (space-separated)</label>
+                <input type="text" name="args"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                       placeholder="e.g. -y pi-acp">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Env Vars (KEY=VALUE, one per line)</label>
+                <textarea name="env_vars" rows="2"
+                          class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                          placeholder="OPENAI_BASE_URL=http://..."></textarea>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Description</label>
+                <input type="text" name="description"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                       placeholder="Brief description of this agent">
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeAgentModal()"
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm text-white font-medium transition-colors">
+                    Save
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- Agent CRUD via fetch API ---
+
+    const agentModal = document.getElementById('agent-modal');
+    const agentForm = document.getElementById('agent-form');
+    const agentModalTitle = document.getElementById('agent-modal-title');
+    const agents = {{ agents | tojson | safe }};
+
+    function closeAgentModal() {
+        agentModal.classList.add('hidden');
+        agentForm.reset();
+        document.getElementById('agent-id').value = '';
+        agentModalTitle.textContent = 'Add Agent';
+    }
+
+    function editAgent(id) {
+        const agent = agents.find(a => a.id === id);
+        if (!agent) return;
+        agentModalTitle.textContent = 'Edit Agent';
+        document.getElementById('agent-id').value = agent.id;
+        agentForm.name.value = agent.name;
+        agentForm.type.value = agent.type;
+        agentForm.command.value = agent.command;
+        agentForm.args.value = (agent.args || []).join(' ');
+        agentForm.env_vars.value = Object.entries(agent.env_vars || {}).map(([k,v]) => `${k}=${v}`).join('\n');
+        agentForm.description.value = agent.description || '';
+        agentModal.classList.remove('hidden');
+    }
+
+    function deleteAgent(id, name) {
+        if (!confirm(`Delete agent "${name}"? This cannot be undone.`)) return;
+        console.log(`DELETE /api/agents/${id}`);
+        fetch(`/api/agents/${id}`, { method: 'DELETE' })
+            .then(r => {
+                if (r.ok) { window.location.reload(); }
+                else { alert('Failed to delete agent'); }
+            });
+    }
+
+    function submitAgent(event) {
+        event.preventDefault();
+        const id = document.getElementById('agent-id').value;
+        const formData = new FormData(agentForm);
+        const argsStr = formData.get('args') || '';
+        const envVarsStr = formData.get('env_vars') || '';
+        const envVars = {};
+        if (envVarsStr.trim()) {
+            envVarsStr.trim().split('\n').forEach(line => {
+                const eq = line.indexOf('=');
+                if (eq > 0) {
+                    envVars[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+                }
+            });
+        }
+        const body = {
+            name: formData.get('name'),
+            type: formData.get('type'),
+            command: formData.get('command') || '',
+            args: argsStr ? argsStr.trim().split(/\s+/) : [],
+            env_vars: envVars,
+            description: formData.get('description') || '',
+        };
+
+        const url = id ? `/api/agents/${id}` : '/api/agents';
+        const method = id ? 'PUT' : 'POST';
+        console.log(`${method} ${url}`, body);
+
+        fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(async r => {
+                if (r.ok) {
+                    window.location.reload();
+                } else {
+                    const err = await r.json();
+                    alert(`Error: ${err.detail || 'Unknown error'}`);
+                }
+            });
+    }
+</script>
+{% endblock %}

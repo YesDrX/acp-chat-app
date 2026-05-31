@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACP Chat App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex">
+    <!-- Sidebar Toggle Button -->
+    <button id="sidebar-toggle" class="sidebar-toggle" title="Toggle sidebar">
+        <span class="toggle-icon">☰</span>
+    </button>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">⚡</div>
+            <div class="sidebar-title-group">
+                <h1 class="sidebar-title">ACP Chat</h1>
+                <p class="sidebar-subtitle">Agent Client Protocol</p>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="/sessions" class="sidebar-link" title="Sessions">
+                <span class="sidebar-link-icon">💬</span>
+                <span class="sidebar-link-text">Sessions</span>
+            </a>
+            <a href="/agents" class="sidebar-link" title="Agents">
+                <span class="sidebar-link-icon">🤖</span>
+                <span class="sidebar-link-text">Agents</span>
+            </a>
+            <a href="/templates" class="sidebar-link" title="Templates">
+                <span class="sidebar-link-icon">📋</span>
+                <span class="sidebar-link-text">Templates</span>
+            </a>
+            <a href="/files" class="sidebar-link" title="Files">
+                <span class="sidebar-link-icon">📁</span>
+                <span class="sidebar-link-text">Files</span>
+            </a>
+            <a href="/settings" class="sidebar-link" title="Settings">
+                <span class="sidebar-link-icon">⚙️</span>
+                <span class="sidebar-link-text">Settings</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <span class="sidebar-version">v0.1.0</span>
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+    // Sidebar toggle
+    (function() {
+        const toggle = document.getElementById('sidebar-toggle');
+        const sidebar = document.getElementById('sidebar');
+        const main = document.querySelector('.main-content');
+        if (toggle && sidebar) {
+            // Auto-collapse sidebar on mobile
+            if (window.innerWidth <= 768) {
+                sidebar.classList.add('collapsed');
+            }
+            toggle.addEventListener('click', function() {
+                sidebar.classList.toggle('collapsed');
+                if (main) main.classList.toggle('expanded');
+            });
+        }
+    })();
+    </script>
+    <script src="/static/js/utils.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

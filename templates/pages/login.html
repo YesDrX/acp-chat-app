@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - ACP Chat App</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <h3 class="card-title text-center mb-4">ACP Chat App</h3>
+                <p class="text-center text-muted mb-4">Please sign in to continue</p>
+
+                <!-- Error Message Rendering -->
+                {% if error %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    {{ error }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
+                <!-- Login Form -->
+                <form id="loginForm" method="POST" action="/login">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username" required autofocus>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password_plain" class="form-label">Password</label>
+                        <!-- 
+                          Notice this field has NO 'name' attribute. 
+                          This prevents the plain-text password from being sent to the server. 
+                        -->
+                        <input type="password" class="form-control" id="password_plain" required>
+                    </div>
+
+                    <!-- 
+                      This hidden field WILL be sent to the server. 
+                      The JavaScript below will populate it with the SHA-256 hash.
+                    -->
+                    <input type="hidden" id="password_hash" name="password_hash">
+
+                    <div class="d-grid">
+                        <button type="submit" id="submitBtn" class="btn btn-primary">Sign In</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <p class="text-center text-muted mt-3 small">
+            &copy; 2026 ACP Chat App. Secure Login.
+        </p>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Fallback SHA-256 Library for non-HTTPS environments -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js"></script>
+
+    <!-- Client-Side Hashing Script -->
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(event) {
+            event.preventDefault(); 
+
+            const submitBtn = document.getElementById('submitBtn');
+            const plainPassword = document.getElementById('password_plain').value;
+            const hashField = document.getElementById('password_hash');
+
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'Processing...';
+
+            try {
+                let hashHex;
+
+                // Check if the browser supports native Secure Context Crypto
+                if (window.crypto && window.crypto.subtle) {
+                    // NATIVE HASHING (Requires HTTPS or localhost)
+                    const encoder = new TextEncoder();
+                    const data = encoder.encode(plainPassword);
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                } else {
+                    // FALLBACK HASHING (Works on plain HTTP over LAN IPs)
+                    // Uses the js-sha256 library loaded via CDN above
+                    hashHex = sha256(plainPassword);
+                }
+
+                // Put the hex string into the hidden form field and submit
+                hashField.value = hashHex;
+                this.submit();
+
+            } catch (error) {
+                console.error('Error hashing password:', error);
+                alert('An unexpected error occurred while securing your password.');
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Sign In';
+            }
+        });
+    </script>
+</body>
+</html>

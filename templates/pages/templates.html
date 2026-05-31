@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex-1 p-6 overflow-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-white">📋 Templates</h2>
+        <button onclick="document.getElementById('template-modal').classList.remove('hidden')"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm font-medium transition-colors">
+            + Add Template
+        </button>
+    </div>
+
+    <!-- Templates Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for tmpl in templates %}
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-blue-600 transition-colors cursor-pointer group relative"
+             onclick="useTemplate('{{ tmpl.id }}')">
+            <div class="flex items-start justify-between mb-2">
+                <h3 class="text-white font-semibold text-sm truncate">{{ tmpl.name }}</h3>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">{{ tmpl.agent_id }}</span>
+            </div>
+            {% if tmpl.model %}
+            <p class="text-xs text-gray-500 mb-3">Model: {{ tmpl.model }}</p>
+            {% endif %}
+            {% if tmpl.cwd %}
+            <p class="text-xs text-gray-600 truncate mb-3">📁 {{ tmpl.cwd }}</p>
+            {% endif %}
+            <div class="flex items-center gap-2 mt-auto pt-2 border-t border-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
+                 onclick="event.stopPropagation()">
+                <button onclick="editTemplate('{{ tmpl.id }}')"
+                        class="flex-1 px-2 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 rounded-lg text-blue-400 transition-colors">✏ Edit</button>
+                <button onclick="deleteTemplate('{{ tmpl.id }}', '{{ tmpl.name }}')"
+                        class="flex-1 px-2 py-1.5 text-xs bg-gray-800 hover:bg-red-900/50 rounded-lg text-red-400 transition-colors">🗑 Delete</button>
+            </div>
+        </div>
+        {% endfor %}
+        {% if not templates %}
+        <div class="col-span-full flex flex-col items-center justify-center py-16 text-gray-500">
+            <div class="text-4xl mb-3">📋</div>
+            <p class="text-sm">No templates configured.</p>
+            <p class="text-xs text-gray-600 mt-1">Click "Add Template" to create one.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add/Edit Template Modal -->
+<div id="template-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg p-6 shadow-2xl">
+        <div class="flex items-center justify-between mb-4">
+            <h3 id="template-modal-title" class="text-lg font-bold text-white">Add Template</h3>
+            <button onclick="closeTemplateModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <form id="template-form" onsubmit="submitTemplate(event)" class="space-y-3">
+            <input type="hidden" id="template-id" name="id" value="">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Name *</label>
+                <input type="text" name="name" required
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                       placeholder="e.g. Default GPT-4">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Agent *</label>
+                <select name="agent_id" required
+                        class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">— Select Agent —</option>
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}">{{ agent.name }} ({{ agent.id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Model</label>
+                <input type="text" name="model"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                       placeholder="e.g. gpt-4, claude-3-opus">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Working Directory (cwd)</label>
+                <input type="text" name="cwd"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                       placeholder="e.g. /home/user/project">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Effort Level</label>
+                    <select name="effort_level"
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Default —</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Permission Mode</label>
+                    <select name="permission_mode"
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Default —</option>
+                        <optgroup label="Claude">
+                            <option value="default">Default</option>
+                            <option value="acceptEdits">Accept Edits</option>
+                            <option value="bypassPermissions">Bypass Permissions</option>
+                            <option value="plan">Plan Mode</option>
+                        </optgroup>
+                        <optgroup label="Codex">
+                            <option value="readonly">Read Only</option>
+                            <option value="edit">Edit</option>
+                            <option value="auto">Auto</option>
+                            <option value="plan">plan</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Env Vars (KEY=VALUE, one per line)</label>
+                <textarea name="env_vars" rows="2"
+                          class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                          placeholder="OPENAI_API_KEY=sk-..."></textarea>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeTemplateModal()"
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm text-white font-medium transition-colors">
+                    Save
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const templateModal = document.getElementById('template-modal');
+    const templateForm = document.getElementById('template-form');
+    const templateModalTitle = document.getElementById('template-modal-title');
+    const templates = {{ templates | tojson | safe }};
+
+    function closeTemplateModal() {
+        templateModal.classList.add('hidden');
+        templateForm.reset();
+        document.getElementById('template-id').value = '';
+        templateModalTitle.textContent = 'Add Template';
+    }
+
+    function editTemplate(id) {
+        const tmpl = templates.find(t => t.id === id);
+        if (!tmpl) return;
+        templateModalTitle.textContent = 'Edit Template';
+        document.getElementById('template-id').value = tmpl.id;
+        templateForm.name.value = tmpl.name;
+        templateForm.agent_id.value = tmpl.agent_id;
+        templateForm.model.value = tmpl.model || '';
+        templateForm.cwd.value = tmpl.cwd || '';
+        templateForm.effort_level.value = tmpl.effort_level || '';
+        templateForm.permission_mode.value = tmpl.permission_mode || '';
+        // Clean env var entries for display: strip $env: prefix and quotes
+        function cleanEnvKey(k) { return k.replace(/^\$env:/i, ''); }
+        function cleanEnvVal(v) {
+            if (typeof v === 'string' && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))))
+                return v.slice(1, -1).trim();
+            return v;
+        }
+        templateForm.env_vars.value = Object.entries(tmpl.env_vars || {}).map(([k,v]) => `${cleanEnvKey(k)}=${cleanEnvVal(v)}`).join('\n');
+        templateModal.classList.remove('hidden');
+    }
+
+    function deleteTemplate(id, name) {
+        if (!confirm(`Delete template "${name}"? This cannot be undone.`)) return;
+        console.log(`DELETE /api/templates/${id}`);
+        fetch(`/api/templates/${id}`, { method: 'DELETE' })
+            .then(r => {
+                if (r.ok) { window.location.reload(); }
+                else { alert('Failed to delete template'); }
+            });
+    }
+
+    function submitTemplate(event) {
+        event.preventDefault();
+        const id = document.getElementById('template-id').value;
+        const formData = new FormData(templateForm);
+        const envVarsStr = formData.get('env_vars') || '';
+        const envVars = {};
+        if (envVarsStr.trim()) {
+            envVarsStr.trim().split('\n').forEach(line => {
+                const eq = line.indexOf('=');
+                if (eq > 0) {
+                    let key = line.slice(0, eq).trim();
+                    let val = line.slice(eq + 1).trim();
+                    // Strip $env: prefix (PowerShell syntax)
+                    key = key.replace(/^\$env:/i, '');
+                    // Strip surrounding quotes from value
+                    if ((val.startsWith('"') && val.endsWith('"')) ||
+                        (val.startsWith("'") && val.endsWith("'"))) {
+                        val = val.slice(1, -1).trim();
+                    }
+                    if (key) envVars[key] = val;
+                }
+            });
+        }
+        const body = {
+            name: formData.get('name'),
+            agent_id: formData.get('agent_id'),
+            model: formData.get('model') || '',
+            cwd: formData.get('cwd') || '',
+            effort_level: formData.get('effort_level') || '',
+            permission_mode: formData.get('permission_mode') || '',
+            env_vars: envVars,
+        };
+
+        const url = id ? `/api/templates/${id}` : '/api/templates';
+        const method = id ? 'PUT' : 'POST';
+        console.log(`${method} ${url}`, body);
+
+        fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(async r => {
+                if (r.ok) {
+                    window.location.reload();
+                } else {
+                    const err = await r.json();
+                    alert(`Error: ${err.detail || 'Unknown error'}`);
+                }
+            });
+    }
+
+    function useTemplate(templateId) {
+        // Create a session from this template and navigate to it
+        const tmpl = templates.find(t => t.id === templateId);
+        if (!tmpl) {
+            alert('Template not found');
+            return;
+        }
+        fetch('/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_id: tmpl.agent_id, template_id: templateId })
+        })
+            .then(async r => {
+                if (r.ok) {
+                    const session = await r.json();
+                    window.location.href = `/sessions/${session.id}`;
+                } else {
+                    const err = await r.json();
+                    alert(`Error: ${err.detail || 'Failed to create session'}`);
+                }
+            });
+    }
+</script>
+{% endblock %}

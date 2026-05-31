@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  [data-file-id].selected {
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+    border-radius: 0.5rem;
+  }
+</style>
+<div class="flex-1 flex flex-col overflow-hidden">
+    {# Header #}
+    <header class="h-14 border-b border-gray-800 flex items-center justify-between px-4 shrink-0">
+        <div class="flex items-center gap-3">
+            <h2 class="text-base font-medium">📁 File Manager</h2>
+        </div>
+        <div class="flex items-center gap-2" id="action-toolbar">
+            <button onclick="uploadFile()" class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                ⬆ Upload
+            </button>
+            <button onclick="createFolder()" class="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                📂 New Folder
+            </button>
+            <button id="bulk-delete-btn" class="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 rounded-lg transition-colors hidden" onclick="bulkDelete()">
+                🗑 Delete Selected
+            </button>
+            <button id="bulk-download-btn" class="px-3 py-1.5 text-xs bg-green-700 hover:bg-green-600 rounded-lg transition-colors hidden" onclick="bulkDownload()">
+                ⬇ Download Selected
+            </button>
+        </div>
+    </header>
+
+    {# Breadcrumb + view toggle #}
+    <div class="h-10 border-b border-gray-800 flex items-center justify-between px-4 shrink-0 bg-gray-900/50">
+        <nav id="breadcrumb" class="flex items-center gap-1 text-xs text-gray-400">
+            <a href="javascript:void(0)" onclick="navigateFolder('')" class="hover:text-blue-400">📁 root</a>
+        </nav>
+        <div class="flex items-center gap-1">
+            <button id="view-grid" onclick="setView('grid')" class="p-1 rounded hover:bg-gray-700" title="Grid view">⊞</button>
+            <button id="view-list" onclick="setView('list')" class="p-1 rounded hover:bg-gray-700" title="List view">☰</button>
+        </div>
+    </div>
+
+    {# Content area #}
+    <div id="files-content" class="flex-1 overflow-y-auto p-4">
+
+        {# Grid view #}
+        <div id="grid-view" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+        </div>
+
+        {# List view (hidden by default) #}
+        <div id="list-view" class="hidden">
+            <table class="w-full text-sm">
+                <thead class="border-b border-gray-800 text-gray-400 text-xs uppercase">
+                    <tr>
+                        <th class="text-left py-2 px-2 w-8"><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
+                        <th class="text-left py-2 px-2">Name</th>
+                        <th class="text-right py-2 px-2 w-24">Size</th>
+                        <th class="text-right py-2 px-2 w-40">Date</th>
+                        <th class="text-right py-2 px-2 w-24">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="list-tbody">
+                </tbody>
+            </table>
+        </div>
+
+        {# Empty state #}
+        <div id="empty-state" class="flex flex-col items-center justify-center h-64 text-gray-500 hidden">
+            <div class="text-4xl mb-3">📁</div>
+            <p class="text-sm">This folder is empty</p>
+            <p class="text-xs text-gray-600 mt-1">Upload files or create a folder to get started</p>
+        </div>
+    </div>
+
+    {# Upload modal #}
+    <div id="upload-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-xl p-6 w-96 border border-gray-700">
+            <h3 class="text-lg font-bold mb-4">Upload File</h3>
+            <input type="file" id="upload-input" class="block w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:text-xs file:bg-blue-600 file:text-white file:border-0 hover:file:bg-blue-700 mb-3">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeUploadModal()" class="px-4 py-2 text-sm bg-gray-700 rounded-lg hover:bg-gray-600">Cancel</button>
+                <button onclick="doUpload()" class="px-4 py-2 text-sm bg-blue-600 rounded-lg hover:bg-blue-700">Upload</button>
+            </div>
+        </div>
+    </div>
+
+    {# Folder create modal #}
+    <div id="folder-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-xl p-6 w-80 border border-gray-700">
+            <h3 class="text-lg font-bold mb-4">New Folder</h3>
+            <input type="text" id="folder-name-input" placeholder="Folder name" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm mb-3 focus:outline-none focus:border-blue-500">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeFolderModal()" class="px-4 py-2 text-sm bg-gray-700 rounded-lg hover:bg-gray-600">Cancel</button>
+                <button onclick="doCreateFolder()" class="px-4 py-2 text-sm bg-blue-600 rounded-lg hover:bg-blue-700">Create</button>
+            </div>
+        </div>
+    </div>
+
+    {# Rename modal #}
+    <div id="rename-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-xl p-6 w-80 border border-gray-700">
+            <h3 class="text-lg font-bold mb-4">Rename</h3>
+            <input type="text" id="rename-name-input" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm mb-3 focus:outline-none focus:border-blue-500">
+            <input type="hidden" id="rename-file-id">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeRenameModal()" class="px-4 py-2 text-sm bg-gray-700 rounded-lg hover:bg-gray-600">Cancel</button>
+                <button onclick="doRename()" class="px-4 py-2 text-sm bg-blue-600 rounded-lg hover:bg-blue-700">Rename</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    "use strict";
+    const PREFIX = "[ACP Files]";
+
+    let currentFolder = "";
+    let currentView = "grid";
+    let files = [];
+    let selectedIds = new Set();
+
+    // Initialize
+    loadFiles();
+
+    function loadFiles() {
+        const params = new URLSearchParams();
+        if (currentFolder) params.set("folder", currentFolder);
+
+        fetch("/api/files?" + params.toString())
+            .then(r => r.json())
+            .then(data => {
+                files = data;
+                console.log(PREFIX, "Loaded", files.length, "files");
+                renderFiles();
+            })
+            .catch(e => console.error(PREFIX, "Failed to load files:", e));
+    }
+
+    function renderFiles() {
+        const gridView = document.getElementById("grid-view");
+        const listTbody = document.getElementById("list-tbody");
+        const emptyState = document.getElementById("empty-state");
+
+        gridView.innerHTML = "";
+        listTbody.innerHTML = "";
+
+        if (files.length === 0) {
+            emptyState.classList.remove("hidden");
+        } else {
+            emptyState.classList.add("hidden");
+        }
+
+        files.forEach(f => {
+            // Grid card
+            const card = createGridCard(f);
+            gridView.appendChild(card);
+
+            // List row
+            const row = createListRow(f);
+            listTbody.appendChild(row);
+        });
+
+        updateBulkButtons();
+        updateBreadcrumb();
+    }
+
+    function createGridCard(f) {
+        const div = document.createElement("div");
+        div.className = "bg-gray-800 border border-gray-700 rounded-lg p-3 hover:border-gray-500 transition-colors cursor-pointer group relative";
+        div.setAttribute("data-file-id", f.id);
+
+        const isFolder = f.type === "folder";
+        const icon = isFolder ? "📁" : getFileIcon(f.name);
+
+        div.innerHTML = `
+            <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <input type="checkbox" class="file-checkbox" data-id="${f.id}" onclick="event.stopPropagation(); toggleFileSelect('${f.id}')">
+            </div>
+            <div class="text-3xl text-center mb-2">${icon}</div>
+            <div class="text-xs font-medium truncate text-center" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+            <div class="text-xs text-gray-500 text-center mt-1">${isFolder ? 'folder' : formatSize(f.size)}</div>
+            <div class="flex justify-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                ${isFolder ? `<button class="text-xs px-2 py-0.5 bg-blue-700 rounded hover:bg-blue-600" onclick="event.stopPropagation(); renameFile('${f.id}', '${escapeHtml(f.name)}')">✏</button>
+                <button class="text-xs px-2 py-0.5 bg-red-700 rounded hover:bg-red-600" onclick="event.stopPropagation(); deleteFolder('${f.path}', '${escapeHtml(f.name)}')">🗑</button>`
+                : `<button class="text-xs px-2 py-0.5 bg-gray-700 rounded hover:bg-gray-600" onclick="event.stopPropagation(); downloadFile('${f.id}')">⬇</button>
+                <button class="text-xs px-2 py-0.5 bg-gray-700 rounded hover:bg-gray-600" onclick="event.stopPropagation(); renameFile('${f.id}', '${escapeHtml(f.name)}')">✏</button>
+                <button class="text-xs px-2 py-0.5 bg-red-700 rounded hover:bg-red-600" onclick="event.stopPropagation(); deleteFile('${f.id}', '${escapeHtml(f.name)}')">🗑</button>`}
+            </div>
+        `;
+
+        if (isFolder) {
+            div.addEventListener("click", () => navigateFolder(f.path));
+        } else {
+            div.addEventListener("click", () => viewFile(f.id));
+        }
+        return div;
+    }
+
+    function createListRow(f) {
+        const tr = document.createElement("tr");
+        tr.className = "border-b border-gray-800/50 hover:bg-gray-800/30";
+        tr.setAttribute("data-file-id", f.id);
+
+        const isFolder = f.type === "folder";
+        const icon = isFolder ? "📁" : getFileIcon(f.name);
+        const date = f.created_at ? new Date(f.created_at).toLocaleString() : "-";
+
+        tr.innerHTML = `
+            <td class="py-2 px-2"><input type="checkbox" class="file-checkbox" data-id="${f.id}" onclick="toggleFileSelect('${f.id}')"></td>
+            <td class="py-2 px-2">
+                <span class="mr-2">${icon}</span>
+                <span${isFolder ? ` onclick="navigateFolder('${f.path}')" class="cursor-pointer hover:text-blue-400"` : ` onclick="viewFile('${f.id}')" class="cursor-pointer hover:text-blue-400"`}>${escapeHtml(f.name)}</span>
+            </td>
+            <td class="py-2 px-2 text-right text-gray-400">${isFolder ? 'folder' : formatSize(f.size)}</td>
+            <td class="py-2 px-2 text-right text-gray-400">${date}</td>
+            <td class="py-2 px-2 text-right">
+                ${isFolder
+                  ? `<button class="text-xs px-2 py-0.5 bg-red-700 rounded hover:bg-red-600" onclick="deleteFolder('${f.path}', '${escapeHtml(f.name)}')">🗑</button>`
+                  : `<button class="text-xs px-2 py-0.5 bg-gray-700 rounded hover:bg-gray-600 mr-1" onclick="renameFile('${f.id}', '${escapeHtml(f.name)}')">✏</button>
+                <button class="text-xs px-2 py-0.5 bg-red-700 rounded hover:bg-red-600" onclick="deleteFile('${f.id}', '${escapeHtml(f.name)}')">🗑</button>`}
+            </td>
+        `;
+
+        return tr;
+    }
+
+    function getFileIcon(name) {
+        const ext = (name || "").split(".").pop().toLowerCase();
+        const icons = {
+            pdf: "📕", doc: "📘", docx: "📘", xls: "📗", xlsx: "📗",
+            ppt: "📙", pptx: "📙", txt: "📄", md: "📝", csv: "📊",
+            json: "📋", xml: "📋", yaml: "📋", yml: "📋",
+            py: "🐍", js: "📜", ts: "📜", html: "🌐", css: "🎨",
+            jpg: "🖼", jpeg: "🖼", png: "🖼", gif: "🖼", webp: "🖼", svg: "🖼",
+            mp4: "🎬", mov: "🎬", mp3: "🎵", wav: "🎵",
+            zip: "📦", gz: "📦", tar: "📦", rar: "📦",
+            log: "📋", sh: "⚙", rs: "🦀", go: "🔵",
+        };
+        return icons[ext] || "📎";
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+    }
+
+    function updateBreadcrumb() {
+        const bc = document.getElementById("breadcrumb");
+        let html = '<a href="javascript:void(0)" onclick="navigateFolder(\'\')" class="hover:text-blue-400">📁 root</a>';
+
+        if (currentFolder) {
+            const parts = currentFolder.split("/").filter(Boolean);
+            let acc = "";
+            parts.forEach((part, i) => {
+                acc += (i > 0 ? "/" : "") + part;
+                html += `<span class="mx-1">/</span><a href="javascript:void(0)" onclick="navigateFolder('${acc}')" class="hover:text-blue-400">${escapeHtml(part)}</a>`;
+            });
+        }
+        bc.innerHTML = html;
+    }
+
+    function updateBulkButtons() {
+        const delBtn = document.getElementById("bulk-delete-btn");
+        const dlBtn = document.getElementById("bulk-download-btn");
+        const show = selectedIds.size > 0;
+        delBtn.classList.toggle("hidden", !show);
+        dlBtn.classList.toggle("hidden", !show);
+    }
+
+    window.toggleFileSelect = function(id) {
+        if (selectedIds.has(id)) {
+            selectedIds.delete(id);
+        } else {
+            selectedIds.add(id);
+        }
+        syncCheckboxes();
+        updateBulkButtons();
+    };
+
+    window.toggleSelectAll = function() {
+        const checkAll = document.getElementById("select-all");
+        if (checkAll.checked) {
+            files.forEach(f => selectedIds.add(f.id));
+        } else {
+            selectedIds.clear();
+        }
+        syncCheckboxes();
+        updateBulkButtons();
+    };
+
+    function syncCheckboxes() {
+        document.querySelectorAll(".file-checkbox").forEach(cb => {
+            var id = cb.getAttribute("data-id");
+            var checked = selectedIds.has(id);
+            cb.checked = checked;
+            // Highlight selected items
+            var card = cb.closest('[data-file-id]');
+            if (card) {
+                card.classList.toggle("selected", checked);
+            }
+            // Make checkbox always visible when selected
+            var container = cb.closest('.absolute');
+            if (container) {
+                container.classList.toggle('opacity-0', !checked);
+                container.classList.toggle('opacity-100', checked);
+            }
+        });
+        const checkAll = document.getElementById("select-all");
+        if (checkAll) {
+            checkAll.checked = files.length > 0 && selectedIds.size === files.length;
+        }
+    }
+
+    // --- Navigation ---
+
+    window.navigateFolder = function(folder) {
+        currentFolder = folder;
+        selectedIds.clear();
+        loadFiles();
+    };
+
+    window.setView = function(view) {
+        currentView = view;
+        document.getElementById("grid-view").classList.toggle("hidden", view !== "grid");
+        document.getElementById("list-view").classList.toggle("hidden", view !== "list");
+        document.getElementById("view-grid").classList.toggle("bg-gray-700", view === "grid");
+        document.getElementById("view-list").classList.toggle("bg-gray-700", view === "list");
+    };
+
+    // --- Actions ---
+
+    window.encodeFileId = function(id) {
+        return encodeURIComponent(id);
+    };
+
+    function encodeId(id) {
+        return encodeURIComponent(id);
+    }
+
+    window.uploadFile = function() {
+        document.getElementById("upload-modal").classList.remove("hidden");
+        document.getElementById("upload-input").value = "";
+    };
+
+    window.closeUploadModal = function() {
+        document.getElementById("upload-modal").classList.add("hidden");
+    };
+
+    window.doUpload = function() {
+        const input = document.getElementById("upload-input");
+        if (!input.files || input.files.length === 0) return;
+
+        const form = new FormData();
+        form.append("file", input.files[0]);
+        if (currentFolder) form.append("folder", currentFolder);
+
+        fetch("/api/files", { method: "POST", body: form })
+            .then(r => {
+                if (!r.ok) return r.json().then(e => Promise.reject(e));
+                return r.json();
+            })
+            .then(data => {
+                console.log(PREFIX, "Uploaded:", data);
+                closeUploadModal();
+                loadFiles();
+            })
+            .catch(e => {
+                console.error(PREFIX, "Upload failed:", e);
+                alert("Upload failed: " + (e.detail || e.message || "Unknown error"));
+            });
+    };
+
+    window.createFolder = function() {
+        document.getElementById("folder-modal").classList.remove("hidden");
+        document.getElementById("folder-name-input").value = "";
+        document.getElementById("folder-name-input").focus();
+    };
+
+    window.closeFolderModal = function() {
+        document.getElementById("folder-modal").classList.add("hidden");
+    };
+
+    window.doCreateFolder = function() {
+        const name = document.getElementById("folder-name-input").value.trim();
+        if (!name) return;
+
+        const form = new FormData();
+        form.append("name", name);
+        if (currentFolder) form.append("parent", currentFolder);
+
+        fetch("/api/files/folder", { method: "POST", body: form })
+            .then(r => {
+                if (!r.ok) return r.json().then(e => Promise.reject(e));
+                return r.json();
+            })
+            .then(data => {
+                console.log(PREFIX, "Folder created:", data);
+                closeFolderModal();
+                loadFiles();
+            })
+            .catch(e => {
+                console.error(PREFIX, "Create folder failed:", e);
+                alert("Failed to create folder");
+            });
+    };
+
+    window.downloadFile = function(id) {
+        window.open("/api/files/download?path=" + encodeURIComponent(id) + "&dl=1", "_blank");
+    };
+
+    window.viewFile = function(id) {
+        window.open("/api/files/download?path=" + encodeURIComponent(id), "_blank");
+    };
+
+    window.deleteFile = function(id, name) {
+        if (!confirm("Delete '" + name + "'?")) return;
+
+        fetch("/api/files?path=" + encodeURIComponent(id), { method: "DELETE" })
+            .then(r => r.json())
+            .then(data => {
+                selectedIds.delete(id);
+                loadFiles();
+            })
+            .catch(e => console.error(PREFIX, "Delete failed:", e));
+    };
+
+    window.renameFile = function(id, currentName) {
+        document.getElementById("rename-modal").classList.remove("hidden");
+        document.getElementById("rename-name-input").value = currentName;
+        document.getElementById("rename-file-id").value = id;
+        document.getElementById("rename-name-input").focus();
+        document.getElementById("rename-name-input").select();
+    };
+
+    window.closeRenameModal = function() {
+        document.getElementById("rename-modal").classList.add("hidden");
+    };
+
+    window.doRename = function() {
+        const newName = document.getElementById("rename-name-input").value.trim();
+        const id = document.getElementById("rename-file-id").value;
+        if (!newName || !id) return;
+
+        const form = new FormData();
+        form.append("name", newName);
+
+        fetch("/api/files?path=" + encodeURIComponent(id), { method: "PUT", body: form })
+            .then(r => {
+                if (!r.ok) return r.json().then(e => Promise.reject(e));
+                return r.json();
+            })
+            .then(data => {
+                console.log(PREFIX, "Renamed:", data);
+                closeRenameModal();
+                loadFiles();
+            })
+            .catch(e => {
+                console.error(PREFIX, "Rename failed:", e);
+                alert("Rename failed");
+            });
+    };
+
+    window.bulkDelete = function() {
+        if (selectedIds.size === 0) return;
+        if (!confirm("Delete " + selectedIds.size + " selected file(s)?")) return;
+
+        const ids = Array.from(selectedIds);
+
+        fetch("/api/files/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(ids),
+        })
+            .then(r => r.json())
+            .then(data => {
+                console.log(PREFIX, "Bulk delete:", data);
+                selectedIds.clear();
+                loadFiles();
+            })
+            .catch(e => console.error(PREFIX, "Bulk delete failed:", e));
+    };
+
+    window.deleteFolder = function(path, name) {
+        if (!confirm('Delete folder "' + name + '" and all its contents?')) return;
+
+        fetch('/api/files/folder/' + encodeURIComponent(path), { method: 'DELETE' })
+            .then(r => {
+                if (!r.ok) return r.json().then(e => Promise.reject(e));
+                return r.json();
+            })
+            .then(data => {
+                console.log(PREFIX, 'Folder deleted:', data);
+                loadFiles();
+            })
+            .catch(e => {
+                console.error(PREFIX, 'Delete folder failed:', e);
+                alert('Failed to delete folder');
+            });
+    };
+
+    window.bulkDownload = function() {
+        if (selectedIds.size === 0) return;
+
+        const ids = Array.from(selectedIds);
+
+        fetch("/api/files/bulk-download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(ids),
+        })
+        .then(async r => {
+            if (!r.ok) return r.json().then(e => Promise.reject(e));
+
+            const contentLength = r.headers.get("Content-Length");
+            const total = contentLength ? parseInt(contentLength) : null;
+            let received = 0;
+            const chunks = [];
+
+            const reader = r.body.getReader();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+
+                if (total) {
+                    const pct = Math.round((received / total) * 100);
+                    console.log(PREFIX, `Downloading... ${pct}%`);
+                } else {
+                    const mb = (received / 1024 / 1024).toFixed(1);
+                    console.log(PREFIX, `Downloading... ${mb} MB`);
+                }
+            }
+
+            return new Blob(chunks, { type: "application/zip" });
+        })
+        .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "files.zip";
+            a.click();
+            URL.revokeObjectURL(url);
+            console.log(PREFIX, "Bulk download complete");
+        })
+        .catch(e => console.error(PREFIX, "Bulk download failed:", e));
+    };
+
+    // --- Helpers ---
+
+    function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "Escape") {
+            closeUploadModal();
+            closeFolderModal();
+            closeRenameModal();
+        }
+    });
+
+    // Enter to submit rename
+    document.getElementById("rename-name-input")?.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") doRename();
+    });
+
+    // Enter to submit folder name
+    document.getElementById("folder-name-input")?.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") doCreateFolder();
+    });
+
+    console.log(PREFIX, "File manager initialized");
+})();
+</script>
+{% endblock %}

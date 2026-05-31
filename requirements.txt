@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+jinja2
+aiosqlite
+python-multipart
+websockets
+agent-client-protocol
+pytest
+pytest-asyncio
+httpx
+starlett<1.0

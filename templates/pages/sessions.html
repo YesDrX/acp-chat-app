@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex-1 p-6 overflow-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-white">💬 Sessions</h2>
+        <div class="flex gap-2">
+            <button id="delete-selected-btn"
+                    class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white text-sm font-medium transition-colors hidden"
+                    onclick="deleteSelectedSessions()">
+                🗑 Delete Selected
+            </button>
+            <button onclick="openCreateModal()"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm font-medium transition-colors">
+                + New Session
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="flex gap-3 mb-4 flex-wrap">
+        <select id="filter-agent"
+                onchange="applyFilters()"
+                class="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+            <option value="">All Agents</option>
+            {% for agent in agents %}
+            <option value="{{ agent.id }}">{{ agent.name }}</option>
+            {% endfor %}
+        </select>
+        <input id="filter-search" type="text" placeholder="Search sessions..."
+               oninput="applyFilters()"
+               class="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 min-w-[200px]">
+    </div>
+
+    <!-- Sessions Grid -->
+    <div id="sessions-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for session in sessions %}
+        <div class="session-card bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors cursor-pointer"
+             data-agent-id="{{ session.agent_id }}"
+             data-name="{{ session.name or session.id }}"
+             data-model="{{ session.model }}"
+             data-cwd="{{ session.cwd }}"
+             data-id="{{ session.id }}">
+            <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                    <input type="checkbox" class="session-checkbox" data-id="{{ session.id }}"
+                        onclick="event.stopPropagation(); updateDeleteButton();"
+                        style="width:16px;height:16px;accent-color:#6366F1;">
+                    <h3 class="text-sm font-semibold text-white truncate flex-1 session-name"
+                        data-real-name="{{ session.name }}"
+                        ondblclick="startRenameCard(event, '{{ session.id }}')"
+                        title="Double-click to rename">
+                        {{ session.name or 'Unnamed Session' }}
+                    </h3>
+                </div>
+                <span class="ml-2 px-2 py-0.5 text-xs rounded-full flex-shrink-0
+                    {% if session.status == 'active' %}bg-green-900/50 text-green-400
+                    {% elif session.status == 'created' %}bg-blue-900/50 text-blue-400
+                    {% elif session.status == 'resuming' %}bg-yellow-900/50 text-yellow-400
+                    {% else %}bg-gray-800 text-gray-400{% endif %}">
+                    {{ session.status }}
+                </span>
+            </div>
+            <div class="text-xs text-gray-400 space-y-1">
+                <div><span class="text-gray-500">Agent:</span> {{ session.agent_id }}</div>
+                {% if session.model %}<div><span class="text-gray-500">Model:</span> {{ session.model }}</div>{% endif %}
+                {% if session.cwd %}<div class="truncate"><span class="text-gray-500">CWD:</span> {{ session.cwd }}</div>{% endif %}
+            </div>
+            <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-800">
+                <span class="text-xs text-gray-600" title="{{ session.last_active_at }}">
+                    {{ session.last_active_at[:16] if session.last_active_at else '—' }}
+                </span>
+                <button onclick="deleteSession(event, '{{ session.id }}', '{{ session.name or 'Unnamed' }}')"
+                        class="text-red-400 hover:text-red-300 text-xs z-10 relative">
+                    Delete
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+        {% if not sessions %}
+        <div class="col-span-full text-center py-12 text-gray-500">
+            No sessions yet. Click "New Session" to start chatting with an agent.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Create Session Modal -->
+<div id="create-modal" class="{% if not show_create_modal %}hidden{% endif %} fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-white">New Session</h3>
+            <button onclick="closeCreateModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <form id="create-session-form" onsubmit="createSession(event)" class="space-y-3">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Agent *</label>
+                <select name="agent_id" required
+                        class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">— Select Agent —</option>
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}">{{ agent.name }} ({{ agent.id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Session Name</label>
+                <input type="text" name="name"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                       placeholder="Optional name for this session">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Template (load defaults)</label>
+                <select name="template_id"
+                        onchange="onTemplateChange()"
+                        class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">— None —</option>
+                    {% for tmpl in templates %}
+                    <option value="{{ tmpl.id }}"
+                            data-agent="{{ tmpl.agent_id }}"
+                            data-model="{{ tmpl.model }}"
+                            data-cwd="{{ tmpl.cwd }}"
+                            data-effort="{{ tmpl.effort_level }}"
+                            data-permission="{{ tmpl.permission_mode }}"
+                            data-env="{{ tmpl.env_vars | tojson | forceescape }}">
+                        {{ tmpl.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Model</label>
+                <input type="text" name="model"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                       placeholder="e.g. gpt-4, claude-3-opus">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Working Directory (cwd)</label>
+                <input type="text" name="cwd"
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                       placeholder="e.g. /tmp or /home/user/project">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Effort Level</label>
+                    <select name="effort_level"
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Default —</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Permission Mode</label>
+                    <select name="permission_mode"
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Default —</option>
+                        <optgroup label="Claude">
+                            <option value="default">Default</option>
+                            <option value="acceptEdits">Accept Edits</option>
+                            <option value="bypassPermissions">Bypass Permissions</option>
+                            <option value="plan">Plan Mode</option>
+                        </optgroup>
+                        <optgroup label="Codex">
+                            <option value="readonly">Read Only</option>
+                            <option value="edit">Edit</option>
+                            <option value="auto">Auto</option>
+                            <option value="plan">plan</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Env Vars (KEY=VALUE, one per line)</label>
+                <textarea name="env_vars" rows="2"
+                          class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                          placeholder="OPENAI_BASE_URL=http://..."></textarea>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeCreateModal()"
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm text-white font-medium transition-colors">
+                    Create Session
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function openCreateModal() {
+        document.getElementById('create-modal').classList.remove('hidden');
+    }
+
+    function closeCreateModal() {
+        document.getElementById('create-modal').classList.add('hidden');
+        document.getElementById('create-session-form').reset();
+    }
+
+    function goToSession(id) {
+        window.location.href = `/sessions/${id}`;
+    }
+
+    function deleteSession(event, id, name) {
+        event.stopPropagation();
+        if (!confirm(`Delete session "${name}"? This cannot be undone.`)) return;
+        console.log(`DELETE /api/sessions/${id}`);
+        fetch(`/api/sessions/${id}`, { method: 'DELETE' })
+            .then(r => {
+                if (r.ok) { window.location.reload(); }
+                else { alert('Failed to delete session'); }
+            });
+    }
+
+    function applyFilters() {
+        const agentFilter = document.getElementById('filter-agent').value;
+        const searchText = document.getElementById('filter-search').value.toLowerCase();
+        document.querySelectorAll('.session-card').forEach(card => {
+            const agentId = card.dataset.agentId;
+            const name = card.dataset.name.toLowerCase();
+            const model = card.dataset.model.toLowerCase();
+            const cwd = card.dataset.cwd.toLowerCase();
+
+            let show = true;
+            if (agentFilter && agentId !== agentFilter) show = false;
+            if (searchText && !name.includes(searchText) && !model.includes(searchText) && !cwd.includes(searchText)) show = false;
+            card.style.display = show ? '' : 'none';
+        });
+    }
+
+    function onTemplateChange() {
+        const sel = document.querySelector('[name="template_id"]');
+        const option = sel.selectedOptions[0];
+        if (!option || !option.value) return;
+
+        // Pre-fill agent if not already set
+        const agentSel = document.querySelector('[name="agent_id"]');
+        const tmplAgent = option.dataset.agent;
+        if (tmplAgent && agentSel.value === '') {
+            agentSel.value = tmplAgent;
+        }
+
+        // Pre-fill other fields if they are still empty
+        const form = document.getElementById('create-session-form');
+        const fillIfEmpty = (name, value) => {
+            if (!value) return;
+            const el = form.querySelector(`[name="${name}"]`);
+            if (el && el.value === '') el.value = value;
+        };
+        fillIfEmpty('model', option.dataset.model);
+        fillIfEmpty('cwd', option.dataset.cwd);
+        fillIfEmpty('effort_level', option.dataset.effort);
+        fillIfEmpty('permission_mode', option.dataset.permission);
+
+        // Env vars from template
+        if (option.dataset.env) {
+            try {
+                const envObj = JSON.parse(option.dataset.env);
+                const envLines = Object.entries(envObj).map(([k,v]) => `${k}=${v}`).join('\n');
+                const envEl = form.querySelector('[name="env_vars"]');
+                if (envEl && envEl.value === '') envEl.value = envLines;
+            } catch(e) {}
+        }
+    }
+
+    function createSession(event) {
+        event.preventDefault();
+        const form = document.getElementById('create-session-form');
+        const formData = new FormData(form);
+
+        const envVarsStr = formData.get('env_vars') || '';
+        const envVars = {};
+        if (envVarsStr.trim()) {
+            envVarsStr.trim().split('\n').forEach(line => {
+                const eq = line.indexOf('=');
+                if (eq > 0) {
+                    envVars[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+                }
+            });
+        }
+
+        const body = {
+            agent_id: formData.get('agent_id'),
+            name: formData.get('name') || '',
+            model: formData.get('model') || '',
+            cwd: formData.get('cwd') || '',
+            effort_level: formData.get('effort_level') || '',
+            permission_mode: formData.get('permission_mode') || '',
+            env_vars: envVars,
+        };
+
+        const templateId = formData.get('template_id');
+        if (templateId) {
+            body.template_id = templateId;
+        }
+
+        console.log('POST /api/sessions', body);
+
+        fetch('/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(async r => {
+                if (r.ok) {
+                    const session = await r.json();
+                    window.location.href = `/sessions/${session.id}`;
+                } else {
+                    const err = await r.json();
+                    alert(`Error: ${err.detail || 'Unknown error'}`);
+                }
+            });
+    }
+
+    // Auto-open modal if show_create_modal is set
+    {% if show_create_modal %}
+    openCreateModal();
+    {% endif %}
+
+    // === Bulk Delete ===
+    window.updateDeleteButton = function() {
+        var checked = document.querySelectorAll('.session-checkbox:checked');
+        var btn = document.getElementById('delete-selected-btn');
+        if (checked.length > 0) {
+            btn.classList.remove('hidden');
+            btn.textContent = '🗑 Delete (' + checked.length + ')';
+        } else {
+            btn.classList.add('hidden');
+        }
+    };
+
+    window.deleteSelectedSessions = function() {
+        var checked = document.querySelectorAll('.session-checkbox:checked');
+        if (!checked.length) return;
+        if (!confirm('Delete ' + checked.length + ' session(s)? This cannot be undone.')) return;
+        var ids = Array.from(checked).map(function(cb) { return cb.getAttribute('data-id'); });
+        var promises = ids.map(function(id) {
+            return fetch('/api/sessions/' + id, { method: 'DELETE' });
+        });
+        Promise.all(promises).then(function() { window.location.reload(); });
+    };
+
+    // === Inline Rename on Sessions Page ===
+    window.startRenameCard = function(event, sessionId) {
+        event.stopPropagation();
+        var h3 = event.target;
+        var realName = h3.getAttribute('data-real-name') || h3.textContent.trim();
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.value = realName;
+        input.placeholder = 'Unnamed Session';
+        input.className = 'bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-sm text-white outline-none w-full';
+        input.onblur = function() { saveCardRename(sessionId, input.value, h3, input); };
+        input.onkeydown = function(e) { if (e.key === 'Enter') saveCardRename(sessionId, input.value, h3, input); };
+        h3.replaceWith(input);
+        input.focus();
+        input.select();
+    };
+
+    window.saveCardRename = function(sessionId, name, h3, input) {
+        name = name.trim();
+        var newH3 = document.createElement('h3');
+        newH3.className = 'text-sm font-semibold text-white truncate session-name';
+        newH3.textContent = name || 'Unnamed Session';
+        newH3.setAttribute('data-real-name', name);
+        newH3.textContent = name;
+        newH3.setAttribute('ondblclick', "startRenameCard(event, '" + sessionId + "')");
+        newH3.setAttribute('title', 'Double-click to rename');
+        input.replaceWith(newH3);
+        fetch('/api/sessions/' + sessionId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        });
+    };
+
+    // Click on card body goes to session (not checkbox or rename)
+    document.querySelectorAll('.session-card').forEach(function(card) {
+        card.addEventListener('click', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.classList.contains('session-name')) return;
+            goToSession(card.getAttribute('data-id'));
+        });
+    });
+
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+{# Message bubble component — Jinja macro for rendering chat messages #}
+
+{% macro message_bubble(sender, content, timestamp=None) %}
+<div class="message-row {% if sender == 'user' %}user-row{% else %}agent-row{% endif %}">
+    <div class="message-bubble {% if sender == 'user' %}user-bubble{% else %}agent-bubble{% endif %}">
+        {{ content }}
+    </div>
+</div>
+{% endmacro %}
+
+{% macro system_message(text, class_name=None) %}
+<div class="system-message{% if class_name %} {{ class_name }}{% endif %}">
+    {{ text }}
+</div>
+{% endmacro %}
+
+

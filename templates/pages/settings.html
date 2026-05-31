@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex-1 p-6 overflow-auto">
+    <div class="max-w-4xl mx-auto">
+
+        <!-- Header -->
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-white">⚙️ Settings</h2>
+            <p class="text-sm text-gray-500 mt-1">Skills and MCP servers discovered on this machine.</p>
+        </div>
+
+        <!-- Skills Section -->
+        <div class="mb-10">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-white">Skills</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Markdown skill files found in ~/.claude/skills, ~/.agents/skills, ~/.pi/skills</p>
+                </div>
+                <button id="refresh-skills" class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded border border-gray-700 hover:border-gray-500">
+                    ↻ Refresh
+                </button>
+            </div>
+            <div id="skills-container">
+                <div class="text-sm text-gray-600 italic py-4 text-center">Loading skills…</div>
+            </div>
+        </div>
+
+        <!-- MCP Section -->
+        <div class="mb-10">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-white">MCP Servers</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Discovered from agent config files</p>
+                </div>
+                <button id="refresh-mcp" class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded border border-gray-700 hover:border-gray-500">
+                    ↻ Refresh
+                </button>
+            </div>
+            <div id="mcp-container">
+                <div class="text-sm text-gray-600 italic py-4 text-center">Loading MCP servers…</div>
+            </div>
+
+            <!-- MCP Config Path Manager -->
+            <div class="mt-4 bg-gray-900 border border-gray-800 rounded-xl p-4">
+                <button id="toggle-mcp-paths" class="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white transition-colors">
+                    <span>Manage config file paths</span>
+                    <span id="toggle-icon" class="text-gray-600">▸</span>
+                </button>
+                <div id="mcp-paths-panel" class="hidden mt-4 space-y-3">
+                    <div id="mcp-paths-list" class="space-y-2"></div>
+                    <div class="flex gap-2 mt-3">
+                        <input type="text" id="new-mcp-agent" placeholder="Agent name"
+                               class="w-32 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500">
+                        <input type="text" id="new-mcp-path" placeholder="~/.myagent/config.json"
+                               class="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 font-mono">
+                        <button id="add-mcp-path" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-xs transition-colors">
+                            Add
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-600">Changes are saved immediately to settings.json</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- About -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
+            <h3 class="text-base font-semibold text-white mb-1">About</h3>
+            <div class="text-sm text-gray-400 space-y-1">
+                <p>ACP Chat App v0.1.0</p>
+                <p>ChatGPT-style web interface for ACP agents</p>
+                <p class="text-gray-600 mt-2">Built with FastAPI + Jinja2 + Tailwind CSS</p>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Skill Detail Modal -->
+<div id="skill-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div id="modal-backdrop" class="absolute inset-0 bg-black/75 backdrop-blur-sm"></div>
+    <div class="relative bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl">
+        <div class="flex items-center justify-between px-7 py-4 border-b border-gray-800 flex-shrink-0">
+            <h4 id="modal-title" class="text-base font-semibold text-white"></h4>
+            <button id="modal-close" class="text-gray-500 hover:text-white transition-colors text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800">&times;</button>
+        </div>
+        <div id="modal-body" class="overflow-y-auto px-7 py-6 flex-1
+            prose prose-invert max-w-none
+            prose-headings:text-white prose-headings:font-semibold prose-headings:mt-6 prose-headings:mb-3
+            prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
+            prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-3
+            prose-code:text-blue-300 prose-code:bg-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+            prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-xl prose-pre:p-4
+            prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline
+            prose-strong:text-white prose-li:text-gray-300 prose-li:my-1
+            prose-ul:my-3 prose-ol:my-3">
+        </div>
+        <div class="px-7 py-3 border-t border-gray-800 flex-shrink-0">
+            <p id="modal-source" class="text-xs text-gray-600 font-mono"></p>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    "use strict";
+    const PREFIX = "[ACP Settings]";
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    function friendlyDir(dir) {
+        // Turn /home/user/.claude/skills → ~/.claude/skills
+        const home = ""; // can't know home in JS, rely on path shape
+        return dir.replace(/^\/(?:home|Users)\/[^/]+\//, "~/");
+    }
+
+    function groupBy(arr, key) {
+        return arr.reduce((acc, item) => {
+            const k = item[key];
+            (acc[k] = acc[k] || []).push(item);
+            return acc;
+        }, {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Skills
+    // -----------------------------------------------------------------------
+
+    function skillCard(skill) {
+        const initials = skill.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+        const desc = skill.description
+            ? `<p class="text-xs text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">${skill.description}</p>`
+            : "";
+        return `
+        <button class="skill-card text-left bg-gray-950 border border-gray-800 hover:border-blue-500/60
+                       rounded-xl p-4 transition-all group cursor-pointer w-full"
+                data-skill-id="${skill.id}">
+            <div class="flex items-start gap-3">
+                <div class="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20
+                            flex items-center justify-center text-blue-400 text-xs font-bold flex-shrink-0
+                            group-hover:bg-blue-500/20 transition-colors">
+                    ${initials}
+                </div>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-white truncate">${skill.name}</p>
+                    ${desc}
+                </div>
+            </div>
+        </button>`;
+    }
+
+    function skillsGroupHTML(dirPath, skills) {
+        const label = friendlyDir(dirPath);
+        const id = "skills-group-" + btoa(dirPath).replace(/[^a-z0-9]/gi, "");
+        return `
+        <div class="mb-4 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+            <button class="group-toggle w-full flex items-center justify-between px-4 py-3
+                           hover:bg-gray-800/50 transition-colors" data-target="${id}">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-600">📁</span>
+                    <code class="text-xs text-gray-400 font-mono">${label}</code>
+                    <span class="text-xs text-gray-600 bg-gray-800 rounded-full px-2 py-0.5">${skills.length}</span>
+                </div>
+                <span class="toggle-chevron text-gray-600 text-xs transition-transform">▾</span>
+            </button>
+            <div id="${id}" class="px-3 pb-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-2">
+                    ${skills.map(skillCard).join("")}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function loadSkills() {
+        const container = document.getElementById("skills-container");
+        container.innerHTML = `<div class="text-sm text-gray-600 italic py-4 text-center">Loading skills…</div>`;
+
+        fetch("/api/skills")
+            .then(r => r.json())
+            .then(skills => {
+                if (!skills.length) {
+                    container.innerHTML = `<p class="text-sm text-gray-600 italic py-4 text-center">
+                        No skills found. Add .md files to ~/.claude/skills, ~/.agents/skills, or ~/.pi/skills.</p>`;
+                    return;
+                }
+
+                const groups = groupBy(skills, "source_dir");
+                container.innerHTML = Object.entries(groups)
+                    .map(([dir, items]) => skillsGroupHTML(dir, items))
+                    .join("");
+
+                // Skill card clicks
+                container.querySelectorAll(".skill-card").forEach(btn => {
+                    btn.addEventListener("click", () => openSkill(btn.dataset.skillId));
+                });
+
+                // Group toggle clicks
+                container.querySelectorAll(".group-toggle").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const target = document.getElementById(btn.dataset.target);
+                        const chevron = btn.querySelector(".toggle-chevron");
+                        const collapsed = target.classList.toggle("hidden");
+                        chevron.style.transform = collapsed ? "rotate(-90deg)" : "";
+                    });
+                });
+            })
+            .catch(e => {
+                console.error(PREFIX, "Failed to load skills:", e);
+                container.innerHTML = `<p class="text-sm text-red-400 py-4 text-center">Failed to load skills.</p>`;
+            });
+    }
+
+    function openSkill(skillId) {
+        const modal  = document.getElementById("skill-modal");
+        const title  = document.getElementById("modal-title");
+        const body   = document.getElementById("modal-body");
+        const source = document.getElementById("modal-source");
+
+        title.textContent = "Loading…";
+        source.textContent = "";
+        body.innerHTML = `<div class="animate-pulse space-y-3">
+            <div class="h-4 bg-gray-800 rounded w-3/4"></div>
+            <div class="h-4 bg-gray-800 rounded w-full"></div>
+            <div class="h-4 bg-gray-800 rounded w-5/6"></div>
+            <div class="h-4 bg-gray-800 rounded w-2/3"></div>
+        </div>`;
+        modal.classList.remove("hidden");
+
+        fetch(`/api/skills/${encodeURIComponent(skillId)}`)
+            .then(r => r.json())
+            .then(data => {
+                title.textContent = data.name;
+                body.innerHTML = data.html;
+                source.textContent = data.path || "";
+            })
+            .catch(e => {
+                console.error(PREFIX, "Failed to load skill:", e);
+                body.innerHTML = `<p class="text-red-400">Failed to load skill content.</p>`;
+            });
+    }
+
+    // -----------------------------------------------------------------------
+    // MCP Servers
+    // -----------------------------------------------------------------------
+
+    function mcpCard(server) {
+        const toolBadges = (server.tools || []).length
+            ? server.tools.slice(0, 5).map(t =>
+                `<span class="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 font-mono">${t}</span>`
+              ).join("") + (server.tools.length > 5
+                ? `<span class="text-xs text-gray-600 self-center">+${server.tools.length - 5} more</span>` : "")
+            : "";
+
+        const cmdPreview = server.command
+            ? `<code class="text-xs text-gray-600 font-mono truncate block mt-1.5">${server.command} ${(server.args||[]).slice(0,3).join(" ")}</code>`
+            : "";
+
+        return `
+        <div class="bg-gray-950 border border-gray-800 rounded-xl p-4">
+            <div class="flex items-start justify-between gap-2 mb-1">
+                <p class="text-sm font-medium text-white truncate">${server.display_name}</p>
+                <div class="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20
+                            flex items-center justify-center text-purple-400 flex-shrink-0 text-xs">⚡</div>
+            </div>
+            ${server.description ? `<p class="text-xs text-gray-500 line-clamp-2">${server.description}</p>` : ""}
+            ${cmdPreview}
+            ${toolBadges ? `<div class="flex flex-wrap gap-1 mt-2">${toolBadges}</div>` : ""}
+        </div>`;
+    }
+
+    function mcpGroupHTML(agentName, servers) {
+        const id = "mcp-group-" + agentName.replace(/[^a-z0-9]/gi, "");
+        return `
+        <div class="mb-4 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+            <button class="group-toggle w-full flex items-center justify-between px-4 py-3
+                           hover:bg-gray-800/50 transition-colors" data-target="${id}">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-purple-400">⚡</span>
+                    <span class="text-xs text-gray-300 font-medium">${agentName}</span>
+                    <span class="text-xs text-gray-600 bg-gray-800 rounded-full px-2 py-0.5">${servers.length}</span>
+                </div>
+                <span class="toggle-chevron text-gray-600 text-xs transition-transform">▾</span>
+            </button>
+            <div id="${id}" class="px-3 pb-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                    ${servers.map(mcpCard).join("")}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function loadMcp() {
+        const container = document.getElementById("mcp-container");
+        container.innerHTML = `<div class="text-sm text-gray-600 italic py-4 text-center">Loading MCP servers…</div>`;
+
+        fetch("/api/mcp")
+            .then(r => r.json())
+            .then(servers => {
+                if (!servers.length) {
+                    container.innerHTML = `<p class="text-sm text-gray-600 italic py-4 text-center">
+                        No MCP servers found. Add config paths below.</p>`;
+                    return;
+                }
+                const groups = groupBy(servers, "agent");
+                container.innerHTML = Object.entries(groups)
+                    .map(([agent, items]) => mcpGroupHTML(agent, items))
+                    .join("");
+
+                container.querySelectorAll(".group-toggle").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const target = document.getElementById(btn.dataset.target);
+                        const chevron = btn.querySelector(".toggle-chevron");
+                        const collapsed = target.classList.toggle("hidden");
+                        chevron.style.transform = collapsed ? "rotate(-90deg)" : "";
+                    });
+                });
+            })
+            .catch(e => {
+                console.error(PREFIX, "Failed to load MCP servers:", e);
+                container.innerHTML = `<p class="text-sm text-red-400 py-4 text-center">Failed to load MCP servers.</p>`;
+            });
+    }
+
+    // -----------------------------------------------------------------------
+    // MCP path management
+    // -----------------------------------------------------------------------
+
+    let mcpPaths = [];
+
+    function loadMcpPaths() {
+        fetch("/api/settings")
+            .then(r => r.json())
+            .then(s => {
+                mcpPaths = s.mcp_config_paths || [];
+                renderMcpPaths();
+            });
+    }
+
+    function renderMcpPaths() {
+        const list = document.getElementById("mcp-paths-list");
+        if (!mcpPaths.length) {
+            list.innerHTML = `<p class="text-xs text-gray-600 italic">No paths configured.</p>`;
+            return;
+        }
+        list.innerHTML = mcpPaths.map((entry, i) => `
+            <div class="flex items-center gap-2 group">
+                <span class="text-xs text-purple-400 w-28 flex-shrink-0 truncate">${entry.agent}</span>
+                <code class="text-xs text-gray-400 font-mono flex-1 truncate">${entry.path}</code>
+                <button class="remove-path text-gray-700 hover:text-red-400 transition-colors text-xs
+                               opacity-0 group-hover:opacity-100 flex-shrink-0" data-index="${i}">✕</button>
+            </div>`).join("");
+
+        list.querySelectorAll(".remove-path").forEach(btn => {
+            btn.addEventListener("click", () => {
+                mcpPaths.splice(parseInt(btn.dataset.index), 1);
+                saveMcpPaths();
+            });
+        });
+    }
+
+    function saveMcpPaths() {
+        fetch("/api/settings/mcp-paths", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mcp_config_paths: mcpPaths }),
+        })
+        .then(r => r.json())
+        .then(s => {
+            mcpPaths = s.mcp_config_paths || [];
+            renderMcpPaths();
+            loadMcp();
+        })
+        .catch(e => console.error(PREFIX, "Failed to save MCP paths:", e));
+    }
+
+    document.getElementById("add-mcp-path").addEventListener("click", () => {
+        const agent = document.getElementById("new-mcp-agent").value.trim();
+        const path  = document.getElementById("new-mcp-path").value.trim();
+        if (!agent || !path) return;
+        mcpPaths.push({ agent, path });
+        document.getElementById("new-mcp-agent").value = "";
+        document.getElementById("new-mcp-path").value = "";
+        saveMcpPaths();
+    });
+
+    document.getElementById("toggle-mcp-paths").addEventListener("click", () => {
+        const panel = document.getElementById("mcp-paths-panel");
+        const icon  = document.getElementById("toggle-icon");
+        const collapsed = panel.classList.toggle("hidden");
+        icon.textContent = collapsed ? "▸" : "▾";
+        if (!collapsed) loadMcpPaths();
+    });
+
+    // -----------------------------------------------------------------------
+    // Modal
+    // -----------------------------------------------------------------------
+
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    document.getElementById("modal-backdrop").addEventListener("click", closeModal);
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+    function closeModal() {
+        document.getElementById("skill-modal").classList.add("hidden");
+    }
+
+    // -----------------------------------------------------------------------
+    // Refresh buttons & init
+    // -----------------------------------------------------------------------
+
+    document.getElementById("refresh-skills").addEventListener("click", loadSkills);
+    document.getElementById("refresh-mcp").addEventListener("click", loadMcp);
+
+    loadSkills();
+    loadMcp();
+    console.log(PREFIX, "Settings page initialized");
+})();
+</script>
+{% endblock %}
