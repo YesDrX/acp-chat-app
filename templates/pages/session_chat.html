@@ -223,27 +223,76 @@
     };
 
     // Session title inline rename
+    var _renameOriginal = null;
     window.startRenameSession = function() {
         var display = document.getElementById('session-title-display');
         var input = document.getElementById('session-title-input');
+        if (display.classList.contains('hidden')) return; // already editing
+        _renameOriginal = input.value; // remember in case we need to revert
+        input.addEventListener('keydown', function onKey(e) {
+            if (e.key === 'Escape') {
+                input.removeEventListener('keydown', onKey);
+                input.value = _renameOriginal;
+                cancelRenameSession();
+            }
+        });
         display.classList.add('hidden');
         input.classList.remove('hidden');
         input.focus();
         input.select();
     };
+    window.cancelRenameSession = function() {
+        var display = document.getElementById('session-title-display');
+        var input = document.getElementById('session-title-input');
+        display.classList.remove('hidden');
+        input.classList.add('hidden');
+    };
     window.saveRenameSession = function() {
         var display = document.getElementById('session-title-display');
         var input = document.getElementById('session-title-input');
         var name = input.value.trim();
-        display.textContent = name || 'Unnamed Session';
+        var original = _renameOriginal != null ? _renameOriginal.trim() : null;
+
+        // Hide input immediately for snappy UI
         display.classList.remove('hidden');
         input.classList.add('hidden');
-        // Save to API
+
+        // No change -> nothing to do
+        if (original !== null && name === original) {
+            display.textContent = name || 'Unnamed Session';
+            return;
+        }
+
+        // Optimistic update; revert on failure
+        display.textContent = name || 'Unnamed Session';
+
         fetch('/api/sessions/{{ session.id }}', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({name: name})
-        }).catch(function(e) { console.error('Rename failed:', e); });
+        })
+        .then(function(r) {
+            if (!r.ok) {
+                return r.json().then(function(err) {
+                    throw new Error(err.detail || ('HTTP ' + r.status));
+                });
+            }
+            return r.json();
+        })
+        .then(function(updated) {
+            // Trust server's canonical name (in case of trimming/normalization)
+            var canonical = (updated && typeof updated.name === 'string') ? updated.name : name;
+            display.textContent = canonical || 'Unnamed Session';
+            input.value = canonical;
+        })
+        .catch(function(e) {
+            console.error('Rename failed:', e);
+            // Revert to original
+            var revertTo = _renameOriginal != null ? _renameOriginal : '';
+            input.value = revertTo;
+            display.textContent = revertTo || 'Unnamed Session';
+            alert('Failed to rename session: ' + (e && e.message ? e.message : e));
+        });
     };
 </script>
 <script>

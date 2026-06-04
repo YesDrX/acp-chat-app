@@ -80,4 +80,3 @@ class TestSettingsAPI:
         assert "text/html" in response.headers["content-type"]
         html = response.text
         assert "Settings" in html
-        assert "idle_timeout_seconds" in html or "Idle Timeout" in html

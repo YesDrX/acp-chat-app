@@ -36,6 +36,8 @@ class FakeConnectionState:
         self.mock_client.remove_queue = MagicMock()
         self.mock_client.reset_buffer = MagicMock()
         self.mock_client.get_buffer = MagicMock(return_value="")
+        self.mock_client.get_thought_buffer = MagicMock(return_value="")
+        self.mock_client.get_tool_calls = MagicMock(return_value=[])
         self.client = self.mock_client
 
         self.ctx = AsyncMock()
@@ -53,6 +55,7 @@ def fake_manager():
     manager = MagicMock()
     manager.is_active.side_effect = lambda sid: sid == "test-sess-active"
     manager.start_session = AsyncMock(return_value="acp-test-sess")
+    manager.resume_session_from = AsyncMock(return_value=("acp-test-sess", False))
     manager.send_prompt = AsyncMock()
     manager.cancel = AsyncMock()
     manager.stop_session = AsyncMock()
@@ -156,6 +159,13 @@ def client_with_active_manager(active_manager, test_db, seed_test_data, test_age
     app.state.acp_manager = active_manager
 
     return TestClient(app)
+
+
+def _drain_replay(ws):
+    """Consume the prompt_complete replay message sent for active sessions."""
+    msg = ws.receive_json()
+    assert msg["type"] == "prompt_complete"
+    assert msg["response"]["stop_reason"] == "replay_complete"
 
 
 class TestWebSocketConnection:
@@ -267,9 +277,10 @@ class TestPromptHandling:
             assert "empty" in data["message"].lower()
 
     def test_send_prompt_already_active(self, client_with_active_manager, active_manager):
-        """Test that sending a prompt to an already active session works."""
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
+            ws.receive_json()  # prompt_complete replay (active session)
 
             active_manager.send_prompt = AsyncMock(
                 return_value=self._make_prompt_response("success", "msg-2")
@@ -287,7 +298,7 @@ class TestPromptHandling:
         with client_with_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
 
-            fake_manager.start_session = AsyncMock(
+            fake_manager.resume_session_from = AsyncMock(
                 side_effect=RuntimeError("Subprocess failed to start")
             )
 
@@ -301,6 +312,7 @@ class TestPromptHandling:
         """Test error handling when send_prompt fails."""
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             active_manager.send_prompt = AsyncMock(
                 side_effect=RuntimeError("Prompt failed")
@@ -320,6 +332,7 @@ class TestCancelStop:
         """Test that cancel is forwarded to the manager."""
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({"type": "cancel"})
 
@@ -343,6 +356,7 @@ class TestCancelStop:
         """Test that stop is forwarded to the manager."""
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({"type": "stop"})
 
@@ -370,6 +384,7 @@ class TestCancelStop:
 
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({"type": "stop"})
 
@@ -385,6 +400,7 @@ class TestCancelStop:
 
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({"type": "cancel"})
 
@@ -400,6 +416,7 @@ class TestSettingsUpdates:
         """Test setting the model."""
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({"type": "set_model", "model": "gpt-4o"})
 
@@ -412,6 +429,7 @@ class TestSettingsUpdates:
         """Test setting the mode."""
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({"type": "set_mode", "mode": "accept_edits"})
 
@@ -424,6 +442,7 @@ class TestSettingsUpdates:
         """Test setting a config option."""
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({
                 "type": "set_config",
@@ -459,6 +478,7 @@ class TestSettingsUpdates:
 
         with client_with_active_manager.websocket_connect("/ws/test-sess-1") as ws:
             ws.receive_json()  # connected
+            _drain_replay(ws)
 
             ws.send_json({"type": "set_mode", "mode": "invalid"})
 

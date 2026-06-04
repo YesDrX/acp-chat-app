@@ -32,8 +32,21 @@ class AcpClient:
         self._thought_buffer: str = ""
         self._tool_calls: list[dict[str, Any]] = []
         self._pending_approvals: dict[str, asyncio.Future] = {}
-        self._approval_cleanup_task = asyncio.create_task(self._cleanup_stale_approvals())
+        self._approval_cleanup_task: asyncio.Task[None] | None = None
         logger.debug("AcpClient initialized")
+
+    def _ensure_cleanup_task(self) -> None:
+        """Start the stale-approval cleanup task lazily.
+
+        Created on first use to avoid requiring a running event loop at
+        construction time (which broke synchronous tests).
+        """
+        if self._approval_cleanup_task is None or self._approval_cleanup_task.done():
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            self._approval_cleanup_task = loop.create_task(self._cleanup_stale_approvals())
 
     def on_connect(self, conn: Any) -> None:
         """Called when the connection is established."""
@@ -157,7 +170,7 @@ class AcpClient:
                 
             return str(obj)
         
-        tool_data = _serialize(tool_call)
+        tool_data = _serialize(tool_call) or {}
         options_data = _serialize(options) if options else {}
 
         loop = asyncio.get_running_loop()

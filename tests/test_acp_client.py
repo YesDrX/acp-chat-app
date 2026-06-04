@@ -338,8 +338,7 @@ async def test_acp_client_sdk_interface_methods_raise():
 
     client = AcpClient()
 
-    with pytest.raises(RequestError):
-        await client.request_permission(options=[], session_id="s", tool_call=None)
+    # request_permission is implemented (queues approval and waits) — not tested here.
 
     with pytest.raises(RequestError):
         await client.write_text_file(content="", path="/tmp", session_id="s")

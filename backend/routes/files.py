@@ -1,22 +1,20 @@
 """File management routes — REST API + Jinja pages.
 
 Provides file upload, download, rename, delete, folder management,
-and bulk operations.
+and bulk operations. Disk-only by design (no DB metadata table).
 """
 
 from __future__ import annotations
 
-import dataclasses
 import io
 import logging
 import mimetypes
 import os
 import re
-import uuid
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Any, Generator
+from typing import Generator
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import (
@@ -28,7 +26,6 @@ from fastapi.responses import (
 )
 
 from backend.config import FILES_DIR
-from backend.models.file import FileMetadata, FileStore
 from backend.template_config import templates
 
 
@@ -50,16 +47,6 @@ logger = logging.getLogger(__name__)
 
 # /api/files router
 files_api_router = APIRouter(prefix="/api/files", tags=["files"])
-
-# Lazy singleton for test injection
-_file_store: FileStore | None = None
-
-
-def _get_file_store() -> FileStore:
-    global _file_store
-    if _file_store is None:
-        _file_store = FileStore()
-    return _file_store
 
 
 # --- API endpoints ---
@@ -159,20 +146,19 @@ async def upload_file(
         f.write(content)
     logger.debug("File written to disk: %s (%d bytes)", target_path, len(content))
 
-    # Create metadata record
-    store = _get_file_store()
+    # Build disk-only metadata response (no DB — design change removed files table).
     relative_path = str(Path(target_path).relative_to(Path(_files_root())))
-    meta = FileMetadata(
-        id=str(uuid.uuid4()),
-        session_id=session_id if session_id else "",
-        name=filename,
-        path=relative_path,
-        size=len(content),
+    file_id = relative_path  # Use relative path as the id for downstream endpoints.
+    return JSONResponse(
+        content={
+            "id": file_id,
+            "session_id": session_id,
+            "name": filename,
+            "path": relative_path,
+            "size": len(content),
+        },
+        status_code=201,
     )
-    created = await store.create(meta)
-    logger.debug("File metadata created: id=%s path=%s", created.id, created.path)
-
-    return JSONResponse(content=dataclasses.asdict(created), status_code=201)
 
 
 # ── Text/code extensions to serve inline as plain text ──
@@ -385,18 +371,7 @@ async def delete_folder(folder_path: str):
     shutil.rmtree(target)
     logger.debug("Folder deleted: %s", target)
 
-    # Also clean up any file records whose paths start with this folder
-    store = _get_file_store()
-    prefix = folder_path.rstrip("/") + "/"
-    all_files = await store.list_all()
-    deleted_count = 0
-    for f in all_files:
-        if f.path.startswith(prefix):
-            await store.delete(f.id)
-            deleted_count += 1
-
-    logger.debug("Cleaned up %d file records under folder", deleted_count)
-    return JSONResponse(content={"detail": "Folder deleted", "records_cleaned": deleted_count})
+    return JSONResponse(content={"detail": "Folder deleted", "records_cleaned": 0})
 
 
 @files_api_router.post("/bulk-delete")
@@ -454,8 +429,13 @@ def _zip_generator(file_ids: list[str]) -> Generator[bytes, None, None]:
 
 @files_api_router.post("/bulk-download")
 async def bulk_download(file_ids: list[str]):
+    if not file_ids:
+        return JSONResponse(content={"detail": "No files specified"}, status_code=404)
+    valid = [fid for fid in file_ids if (p := _safe_path(fid)) and p.exists()]
+    if not valid:
+        return JSONResponse(content={"detail": "No valid files found"}, status_code=404)
     return StreamingResponse(
-        _zip_generator(file_ids),
+        _zip_generator(valid),
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=files.zip"},
     )
@@ -487,6 +467,97 @@ async def list_folders(parent: str = Query("")):
 
     logger.debug("Found %d folders in %s", len(folders), target)
     return JSONResponse(content=folders)
+
+
+# --- Per-id endpoints (id == relative path under FILES_DIR) ---
+# These must come AFTER the static-path routes above so that
+# `/api/files/download`, `/api/files/folder`, `/api/files/bulk-*`, and
+# `/api/files/folders/list` continue to match their specific routes.
+
+
+def _file_meta_from_disk(file_id: str) -> dict | None:
+    """Build a metadata dict for a file at the given relative path.
+
+    Returns None if the file doesn't exist or the path is invalid.
+    """
+    file_path = _safe_path(file_id)
+    if not file_path or not file_path.exists() or not file_path.is_file():
+        return None
+    st = file_path.stat()
+    return {
+        "id": file_id,
+        "name": file_path.name,
+        "path": file_id,
+        "size": st.st_size,
+    }
+
+
+@files_api_router.get("/{file_id:path}/download")
+async def download_file_by_id(file_id: str, dl: bool = False):
+    """Download a file by its relative path id.
+
+    Registered BEFORE the catch-all metadata route so the `/download` suffix
+    is matched specifically.
+    """
+    logger.debug("GET /api/files/%s/download — dl=%s", file_id, dl)
+    file_path = _safe_path(file_id)
+    if not file_path or not file_path.exists() or not file_path.is_file():
+        return JSONResponse(content={"detail": "File not found"}, status_code=404)
+    return FileResponse(
+        path=str(file_path),
+        filename=file_path.name,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{file_path.name}"'},
+    )
+
+
+@files_api_router.get("/{file_id:path}")
+async def get_file_by_id(file_id: str):
+    """Return disk-based metadata for a file by its relative path id."""
+    logger.debug("GET /api/files/%s — metadata", file_id)
+    meta = _file_meta_from_disk(file_id)
+    if not meta:
+        return JSONResponse(content={"detail": "File not found"}, status_code=404)
+    return JSONResponse(content=meta)
+
+
+@files_api_router.delete("/{file_id:path}")
+async def delete_file_by_id(file_id: str):
+    """Delete a file by its relative path id."""
+    logger.debug("DELETE /api/files/%s — by id", file_id)
+    file_path = _safe_path(file_id)
+    if not file_path or not file_path.exists():
+        return JSONResponse(content={"detail": "File not found"}, status_code=404)
+    try:
+        if file_path.is_dir():
+            shutil.rmtree(file_path)
+        else:
+            file_path.unlink()
+    except Exception as e:
+        logger.warning("Delete failed: %s", e)
+        return JSONResponse(content={"detail": f"Delete failed: {e}"}, status_code=500)
+    return JSONResponse(content={"detail": "File deleted"})
+
+
+@files_api_router.put("/{file_id:path}")
+async def rename_file_by_id(file_id: str, name: str = Form(...)):
+    """Rename a file by its relative path id."""
+    logger.debug("PUT /api/files/%s — rename to %s", file_id, name)
+    file_path = _safe_path(file_id)
+    if not file_path or not file_path.exists() or file_path.is_dir():
+        return JSONResponse(content={"detail": "File not found"}, status_code=404)
+    new_path = file_path.parent / name
+    new_relative = (
+        str(new_path.relative_to(Path(_files_root())))
+        if str(new_path).startswith(_files_root())
+        else name
+    )
+    try:
+        file_path.rename(new_path)
+    except Exception as e:
+        logger.error("Rename failed: %s", e, exc_info=True)
+        return JSONResponse(content={"detail": f"Rename failed: {e}"}, status_code=500)
+    return JSONResponse(content={"id": new_relative, "name": name, "path": new_relative})
 
 
 # --- Page routes ---

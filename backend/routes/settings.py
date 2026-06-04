@@ -46,6 +46,11 @@ DEFAULT_SETTINGS = {
 
 
 def _load_settings() -> dict:
+    """Load settings from disk. Returns raw dict with Path objects preserved.
+
+    On-disk JSON has skill_search_dirs as str (json can't represent Path).
+    Convert those back to Path so internal callers (e.g. _discover_skills) work.
+    """
     logger.debug("Loading settings from %s", SETTINGS_FILE)
     if not SETTINGS_FILE.exists():
         return dict(DEFAULT_SETTINGS)
@@ -54,17 +59,34 @@ def _load_settings() -> dict:
             data = json.load(f)
         merged = dict(DEFAULT_SETTINGS)
         merged.update(data)
+        # Re-hydrate Path objects from JSON-serialised str values
+        if "skill_search_dirs" in merged:
+            merged["skill_search_dirs"] = [
+                Path(p) if not isinstance(p, Path) else p
+                for p in merged["skill_search_dirs"]
+            ]
         return merged
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to load settings: %s — using defaults", e)
         return dict(DEFAULT_SETTINGS)
 
 
+def _jsonify(obj):
+    """Recursively convert Path objects to str for JSON serialization."""
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _jsonify(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_jsonify(v) for v in obj]
+    return obj
+
+
 def _save_settings(settings: dict) -> None:
     logger.debug("Saving settings to %s: %s", SETTINGS_FILE, settings)
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f, indent=2)
+        json.dump(_jsonify(settings), f, indent=2)
 
 
 SETTINGS = _load_settings()
@@ -239,7 +261,43 @@ async def settings_page(request: Request):
 
 @router.get("/api/settings")
 async def get_settings():
-    return _load_settings()
+    return _jsonify(_load_settings())
+
+
+class SettingsUpdate(BaseModel):
+    idle_timeout_seconds: int | None = None
+    theme: str | None = None
+    files_directory: str | None = None
+    config_directory: str | None = None
+
+
+VALID_THEMES = {"dark", "light"}
+
+
+@router.put("/api/settings")
+async def update_settings(body: SettingsUpdate):
+    """Update settings. Validates idle_timeout_seconds and theme."""
+    current = _load_settings()
+    if body.idle_timeout_seconds is not None:
+        if body.idle_timeout_seconds < 10:
+            return JSONResponse(
+                {"detail": "idle_timeout_seconds must be at least 10"},
+                status_code=400,
+            )
+        current["idle_timeout_seconds"] = body.idle_timeout_seconds
+    if body.theme is not None:
+        if body.theme not in VALID_THEMES:
+            return JSONResponse(
+                {"detail": f"theme must be one of {sorted(VALID_THEMES)}"},
+                status_code=400,
+            )
+        current["theme"] = body.theme
+    if body.files_directory is not None:
+        current["files_directory"] = body.files_directory
+    if body.config_directory is not None:
+        current["config_directory"] = body.config_directory
+    _save_settings(current)
+    return _jsonify(current)
 
 
 @router.get("/api/skills")

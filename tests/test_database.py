@@ -20,7 +20,6 @@ async def test_schema_creation(test_db):
 
         assert "sessions" in tables, f"Expected 'sessions' table, got: {tables}"
         assert "templates" in tables, f"Expected 'templates' table, got: {tables}"
-        assert "files" in tables, f"Expected 'files' table, got: {tables}"
     finally:
         await conn.close()
 
@@ -59,15 +58,12 @@ async def test_templates_table_columns(test_db):
 
 @pytest.mark.asyncio
 async def test_files_table_columns(test_db):
-    """Test that files table has all expected columns."""
+    """Files are now stored on disk only; verify no files table exists."""
     conn = await get_db()
     try:
         cursor = await conn.execute("PRAGMA table_info(files)")
-        columns = {row[1]: row[2] for row in await cursor.fetchall()}
-
-        expected = ["id", "session_id", "name", "path", "size", "created_at"]
-        for col in expected:
-            assert col in columns, f"Missing column: {col}"
+        columns = {row[1] for row in await cursor.fetchall()}
+        assert len(columns) == 0, f"Expected no files table, got columns: {columns}"
     finally:
         await conn.close()
 

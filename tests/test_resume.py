@@ -36,6 +36,8 @@ class FakeConnectionState:
         self.mock_client.remove_queue = MagicMock()
         self.mock_client.reset_buffer = MagicMock()
         self.mock_client.get_buffer = MagicMock(return_value="")
+        self.mock_client.get_thought_buffer = MagicMock(return_value="")
+        self.mock_client.get_tool_calls = MagicMock(return_value=[])
         self.client = self.mock_client
 
         self.ctx = AsyncMock()
@@ -175,6 +177,7 @@ class TestResumeFlow:
 
         with client_with_manager.websocket_connect("/ws/active-sess") as ws:
             ws.receive_json()  # connected
+            ws.receive_json()  # prompt_complete replay
 
             ws.send_json({"type": "resume"})
 
@@ -223,6 +226,7 @@ class TestResumeFlow:
 
     def test_prompt_fresh_session(self, client_with_manager, fake_manager):
         """Test that prompt to fresh (created) session starts fresh."""
+        fake_manager.resume_session_from = AsyncMock(return_value=("acp-fresh", False))
         fake_manager.send_prompt = AsyncMock()
         resp = MagicMock()
         resp.stop_reason = "end_turn"
@@ -255,6 +259,7 @@ class TestResumeFlow:
 
         with client_with_manager.websocket_connect("/ws/active-sess") as ws:
             ws.receive_json()  # connected
+            ws.receive_json()  # prompt_complete replay
 
             ws.send_json({"type": "prompt", "text": "hello"})
 
@@ -269,6 +274,7 @@ class TestResumeFlow:
 
         with client_with_manager.websocket_connect("/ws/active-sess") as ws:
             ws.receive_json()  # connected
+            ws.receive_json()  # prompt_complete replay
             ws.send_json({"type": "cancel"})
 
             data = ws.receive_json()
@@ -282,6 +288,7 @@ class TestResumeFlow:
 
         with client_with_manager.websocket_connect("/ws/active-sess") as ws:
             ws.receive_json()  # connected
+            ws.receive_json()  # prompt_complete replay
             ws.send_json({"type": "set_model", "model": "gpt-4o"})
 
             data = ws.receive_json()
@@ -295,6 +302,7 @@ class TestResumeFlow:
 
         with client_with_manager.websocket_connect("/ws/active-sess") as ws:
             ws.receive_json()  # connected
+            ws.receive_json()  # prompt_complete replay
             ws.send_json({"type": "set_mode", "mode": "accept_edits"})
 
             data = ws.receive_json()
@@ -308,6 +316,7 @@ class TestResumeFlow:
 
         with client_with_manager.websocket_connect("/ws/active-sess") as ws:
             ws.receive_json()  # connected
+            ws.receive_json()  # prompt_complete replay
             ws.send_json({"type": "set_config", "config_id": "effort", "value": "high"})
 
             data = ws.receive_json()

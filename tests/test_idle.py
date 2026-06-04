@@ -119,7 +119,7 @@ async def test_idle_checker_does_not_kill_active():
 
     with patch.object(asyncio, 'sleep', fast_sleep):
         # Start idle checker with moderate timeout (session was just touched)
-        task = asyncio.create_task(manager._idle_checker(idle_timeout_seconds=10))
+        task = asyncio.create_task(manager._idle_checker())
         await original_sleep(0.05)
         task.cancel()
         try:
@@ -194,7 +194,6 @@ async def test_idle_shutdown_stop_then_activity_cycle():
     # Update activity
     manager.update_activity("cycle-sess")
     # Verify recent activity
-    import time
     assert state.last_activity > time.time() - 2
 
     # Simulate idle by setting last_activity way back

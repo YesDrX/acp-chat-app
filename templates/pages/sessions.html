@@ -358,27 +358,70 @@
         input.value = realName;
         input.placeholder = 'Unnamed Session';
         input.className = 'bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-sm text-white outline-none w-full';
+        input.dataset.original = realName;
         input.onblur = function() { saveCardRename(sessionId, input.value, h3, input); };
-        input.onkeydown = function(e) { if (e.key === 'Enter') saveCardRename(sessionId, input.value, h3, input); };
+        input.onkeydown = function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            else if (e.key === 'Escape') {
+                e.preventDefault();
+                // Revert by triggering save with original value (skip network)
+                var orig = input.dataset.original || '';
+                var newH3 = buildCardNameH3(sessionId, orig);
+                input.replaceWith(newH3);
+            }
+        };
         h3.replaceWith(input);
         input.focus();
         input.select();
     };
 
-    window.saveCardRename = function(sessionId, name, h3, input) {
-        name = name.trim();
+    window.buildCardNameH3 = function(sessionId, name) {
         var newH3 = document.createElement('h3');
         newH3.className = 'text-sm font-semibold text-white truncate session-name';
-        newH3.textContent = name || 'Unnamed Session';
         newH3.setAttribute('data-real-name', name);
-        newH3.textContent = name;
+        newH3.textContent = name || 'Unnamed Session';
         newH3.setAttribute('ondblclick', "startRenameCard(event, '" + sessionId + "')");
         newH3.setAttribute('title', 'Double-click to rename');
+        return newH3;
+    };
+
+    window.saveCardRename = function(sessionId, name, h3, input) {
+        // Guard against double-fire (Enter triggers blur, which would call this twice)
+        if (input.dataset.saving === '1') return;
+        input.dataset.saving = '1';
+
+        name = (name || '').trim();
+        var original = input.dataset.original || '';
+        var newH3 = buildCardNameH3(sessionId, name);
         input.replaceWith(newH3);
+
+        // No change -> skip network
+        if (name === original) return;
+
         fetch('/api/sessions/' + sessionId, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({name: name})
+        })
+        .then(function(r) {
+            if (!r.ok) {
+                return r.json().then(function(err) {
+                    throw new Error(err.detail || ('HTTP ' + r.status));
+                });
+            }
+            return r.json();
+        })
+        .then(function(updated) {
+            var canonical = (updated && typeof updated.name === 'string') ? updated.name : name;
+            newH3.setAttribute('data-real-name', canonical);
+            newH3.textContent = canonical || 'Unnamed Session';
+        })
+        .catch(function(e) {
+            console.error('Rename failed for', sessionId, e);
+            // Revert
+            var revertH3 = buildCardNameH3(sessionId, original);
+            newH3.replaceWith(revertH3);
+            alert('Failed to rename session: ' + (e && e.message ? e.message : e));
         });
     };
 
