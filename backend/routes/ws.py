@@ -278,7 +278,8 @@ async def _do_prompt_inner(
         if state:
             thought_text = state.client.get_thought_buffer()
             if thought_text and thought_text.strip():
-                thought_msg = Message(session_id=session_id, role="thinking", content=thought_text.strip())
+                # thought_msg = Message(session_id=session_id, role="thinking", content=thought_text.strip())
+                thought_msg = Message(session_id=session_id, role="thinking", content=thought_text)
                 await mstore.create(thought_msg)
             for tc in state.client.get_tool_calls():
                 tc_msg = Message(session_id=session_id, role="tool_call", content=json.dumps(tc))

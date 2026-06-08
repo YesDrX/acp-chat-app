@@ -332,16 +332,16 @@
 
       let textToRender = bubble._rawText || bubble.textContent;
       if (textToRender) {
-        // Clean trailing system indicators
-        textToRender = textToRender.replace(/Done\s*\(\s*end_turn\s*\)/g, '').trim();
+        // // Clean trailing system indicators
+        // textToRender = textToRender.replace(/Done\s*\(\s*end_turn\s*\)/g, '').trim();
 
-        // FIX: Ensure spaces around **bold** spans adjacent to word characters.
-        // LLMs sometimes emit "word**bold**word" without spaces, causing the
-        // rendered HTML "word<strong>bold</strong>word" to run together visually.
-        // Pass 1: add space before opening ** when preceded by a word char
-        textToRender = textToRender.replace(/(\w)\*\*(.+?)\*\*/g, '$1 **$2**');
-        // Pass 2: add space after closing ** when followed by a word char
-        textToRender = textToRender.replace(/\*\*(.+?)\*\*(\w)/g, '**$1** $2');
+        // // FIX: Ensure spaces around **bold** spans adjacent to word characters.
+        // // LLMs sometimes emit "word**bold**word" without spaces, causing the
+        // // rendered HTML "word<strong>bold</strong>word" to run together visually.
+        // // Pass 1: add space before opening ** when preceded by a word char
+        // textToRender = textToRender.replace(/(\w)\*\*(.+?)\*\*/g, '$1 **$2**');
+        // // Pass 2: add space after closing ** when followed by a word char
+        // textToRender = textToRender.replace(/\*\*(.+?)\*\*(\w)/g, '**$1** $2');
 
         if (typeof AcpUtils !== "undefined" && AcpUtils.renderMarkdown) {
           bubble.innerHTML = AcpUtils.renderMarkdown(textToRender);

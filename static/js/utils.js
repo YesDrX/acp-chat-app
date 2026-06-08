@@ -56,15 +56,16 @@ window.AcpUtils = {
     if (!text) return "";
     if (typeof marked === "undefined") return AcpUtils.escapeHtml(text);
     try {
-      // Strip spaces inside markdown formatting delimiters (pi-acp sends "** text **")
-      var cleaned = text
-        .replace(/\*\* +([^*]+) +\*\*/g, '**$1**')
-        .replace(/\* +([^*]+) +\*/g, '*$1*')
-        .replace(/__ +([^_]+) +__/g, '__$1__')
-        .replace(/_ +([^_]+) +_/g, '_$1_')
-        .replace(/~~ +([^~]+) +~~/g, '~~$1~~')
-        .replace(/` +([^`]+) +`/g, '`$1`');
-      return marked.parse(cleaned);
+      // // Strip spaces inside markdown formatting delimiters (pi-acp sends "** text **")
+      // var cleaned = text
+      //   .replace(/\*\* +([^*]+) +\*\*/g, '**$1**')
+      //   .replace(/\* +([^*]+) +\*/g, '*$1*')
+      //   .replace(/__ +([^_]+) +__/g, '__$1__')
+      //   .replace(/_ +([^_]+) +_/g, '_$1_')
+      //   .replace(/~~ +([^~]+) +~~/g, '~~$1~~')
+      //   .replace(/` +([^`]+) +`/g, '`$1`');
+      // return marked.parse(cleaned);
+      return marked.parse(text);
     } catch (e) {
       console.warn("[ACP Chat] markdown render error:", e);
       return AcpUtils.escapeHtml(text);
